@@ -12,6 +12,8 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 import os
+
+import stripe
 from environs import Env
 
 env = Env()
@@ -20,10 +22,13 @@ env.read_env()
 MAILGUN_SECRET_KEY = env("MAILGUN_SECRET_KEY")
 MAILERSEND_API_TOKEN = env("MAILERSEND_API_TOKEN")
 MAILGUN_SENDER_DOMAIN = env("MAILGUN_SENDER_DOMAIN")
-
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY")
+stripe.api_key = STRIPE_SECRET_KEY
+PAYPAL_SECRET_ID = env("PAYPAL_SECRET_ID")
+PAYPAL_CLIENT_ID = env("PAYPAL_CLIENT_ID")
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
+FRONTEND_SITE_URL = "https://leaningmanagmentsystem.com"
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
