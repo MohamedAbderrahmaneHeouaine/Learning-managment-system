@@ -10,6 +10,12 @@ urlpatterns = [
     path("user/password-reset-email/<email>/", api_views.PasswordResetEmailVerifyAPIView.as_view(),
          name="password_reset_email"),
     path("user/password-change/", api_views.PasswordChangeAPIView.as_view(), name="password_change"),
+    path("user/profile/<user_id>/", api_views.ProfileAPIView.as_view()),
+    path("user/change-password/", api_views.ChangePasswordAPIView.as_view()),
+
+
+
+
     # core route
     path("course/category/", api_views.CategoryListAPIView.as_view()),
     path("course/course-list/", api_views.CourseListAPIView.as_view()),

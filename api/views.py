@@ -1,12 +1,11 @@
 from datetime import datetime, timedelta
-from distutils.util import strtobool
 
 import requests
 import stripe
+from django.contrib.auth.hashers import check_password
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db import models
 from django.db.models.functions import ExtractMonth
-from django.http import JsonResponse
 from django.shortcuts import redirect
 from rest_framework import generics, permissions, status, viewsets
 from rest_framework.decorators import api_view
@@ -14,10 +13,11 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 import random
-from django.core.mail import EmailMultiAlternatives
+from setuptools._distutils.util import strtobool
+
 from api import serializer as api_serializer
 from api.models import Category, Course, Cart
-from api.send_email import send_simple_message
+
 from leaningmanagmentsystem import settings
 from leaningmanagmentsystem.settings import PAYPAL_CLIENT_ID, PAYPAL_SECRET_ID
 from userauths.models import User, Profile
@@ -25,7 +25,8 @@ from django.template.loader import render_to_string
 from api import models as api_models
 from decimal import Decimal
 
-
+from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.authentication import JWTAuthentication
 # Create your views here.
 
 class MyTokenObtainPairView(TokenObtainPairView):
@@ -44,7 +45,8 @@ def generate_random_otp(length=10):
 
 
 class PasswordResetEmailVerifyAPIView(generics.RetrieveAPIView):
-    permission_classes = (permissions.AllowAny,)
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
     serializer_class = api_serializer.UserSerializer
 
     def get_object(self):
@@ -77,17 +79,18 @@ class PasswordResetEmailVerifyAPIView(generics.RetrieveAPIView):
             html_body = render_to_string("email/password_reset.html", context)
 
             # Send email
-            response = send_simple_message(
-                to_email=user.email,
-                subject=subject,
-                text=text_body
-            )
+            # response = send_simple_message(
+            #     to_email=user.email,
+            #     subject=subject,
+            #     text=text_body
+            # )
 
         return user
 
 
 class PasswordChangeAPIView(generics.CreateAPIView):
-    permission_classes = (permissions.AllowAny,)
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
     serializer_class = api_serializer.UserSerializer
 
     def create(self, request, *args, **kwargs):
@@ -104,6 +107,39 @@ class PasswordChangeAPIView(generics.CreateAPIView):
             return Response("Password changed successfully", status=status.HTTP_201_CREATED)
         else:
             return Response("user does not exist", status=status.HTTP_404_NOT_FOUND)
+
+
+class ChangePasswordAPIView(generics.CreateAPIView):
+    serializer_class = api_serializer.UserSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        user_id = request.data['user_id']
+        old_password = request.data['old_password']
+        new_password = request.data['new_password']
+
+        user = User.objects.get(id=user_id)
+        if user is not None:
+            if check_password(old_password, user.password):
+                user.set_password(new_password)
+                user.save()
+                return Response({"message": "Password changed successfully", "icon": "success"})
+            else:
+                return Response({"message": "Old password is incorrect", "icon": "warning"})
+        else:
+            return Response({"message": "User does not exists", "icon": "error"})
+
+
+class ProfileAPIView(generics.RetrieveUpdateAPIView):
+    serializer_class = api_serializer.ProfileSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        user_id = self.kwargs['user_id']
+        user = User.objects.get(id=user_id)
+        return Profile.objects.get(user=user)
 
 
 class CategoryListAPIView(generics.ListAPIView):
@@ -196,7 +232,8 @@ class CartListAPIView(generics.ListAPIView):
 
 class CartItemDeleteAPIView(generics.DestroyAPIView):
     serializer_class = api_serializer.CartSerializer
-    permission_classes = (permissions.AllowAny,)
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def get_object(self):
         cart_id = self.kwargs['cart_id']
@@ -325,7 +362,7 @@ class CouponApplyAPIView(generics.CreateAPIView):
         if coupon:
             order_items = api_models.CartOrderItem.objects.filter(order=order, teacher=coupon.teacher)
             for i in order_items:
-                if not coupon in i.coupons.all():
+                if  coupon not in i.coupons.all():
                     discount = i.total * coupon.discount / 100
 
                     i.total -= discount
@@ -379,7 +416,7 @@ class StripeCheckoutAPIView(generics.CreateAPIView):
                     }
                 ],
                 mode='payment',
-                success_url=settings.FRONTEND_SITE_URL + '/payment-success/' + order.oid + '?session_id=${CHECKOUT_SESSION_ID}',
+                success_url=settings.FRONTEND_SITE_URL + '/payment-success/' + order.oid + '?session_id={CHECKOUT_SESSION_ID}',
                 cancel_url=settings.FRONTEND_SITE_URL + '/payment-failed/'
             )
             print("checkout_session ====", checkout_session)
@@ -447,13 +484,13 @@ class PaymentSuccessAPIView(generics.CreateAPIView):
                                 order_item=o
                             )
 
-                        return Response({"message": "Payment Successfull"})
+                        return Response({"message": "Payment Successful"})
                     else:
                         return Response({"message": "Already Paid"})
                 else:
                     return Response({"message": "Payment Failed"})
             else:
-                return Response({"message": "PayPal Error Occured"})
+                return Response({"message": "PayPal Error Occurred"})
 
         # Stripe payment success
         if session_id != 'null':
@@ -478,7 +515,7 @@ class PaymentSuccessAPIView(generics.CreateAPIView):
                             teacher=o.teacher,
                             order_item=o
                         )
-                    return Response({"message": "Payment Successfull"})
+                    return Response({"message": "Payment Successful"})
                 else:
                     return Response({"message": "Already Paid"})
             else:
@@ -503,7 +540,7 @@ class StudentSummaryAPIView(generics.ListAPIView):
     def get_queryset(self):
         user_id = self.kwargs['user_id']
         user = User.objects.get(id=user_id)
-
+        print(user)
         total_courses = api_models.EnrolledCourse.objects.filter(user=user).count()
         completed_lessons = api_models.CompletedLesson.objects.filter(user=user).count()
         achieved_certificates = api_models.Certificate.objects.filter(user=user).count()
@@ -592,7 +629,7 @@ class StudentNoteCreateAPIView(generics.ListCreateAPIView):
 
         api_models.Note.objects.create(user=user, course=enrolled.course, note=note, title=title)
 
-        return Response({"message": "Note created successfullly"}, status=status.HTTP_201_CREATED)
+        return Response({"message": "Note created successfully"}, status=status.HTTP_201_CREATED)
 
 
 class StudentNoteDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
@@ -631,7 +668,7 @@ class StudentRateCourseCreateAPIView(generics.CreateAPIView):
             active=True,
         )
 
-        return Response({"message": "Review created successfullly"}, status=status.HTTP_201_CREATED)
+        return Response({"message": "Review created successfully"}, status=status.HTTP_201_CREATED)
 
 
 class StudentRateCourseUpdateAPIView(generics.RetrieveUpdateAPIView):
@@ -728,7 +765,7 @@ class QuestionAnswerMessageSendAPIView(generics.CreateAPIView):
         )
 
         question_serializer = api_serializer.Question_AnswerSerializer(question)
-        return Response({"messgae": "Message Sent", "question": question_serializer.data})
+        return Response({"message": "Message Sent", "question": question_serializer.data})
 
 
 class TeacherSummaryAPIView(generics.ListAPIView):
@@ -743,8 +780,8 @@ class TeacherSummaryAPIView(generics.ListAPIView):
 
         total_courses = api_models.Course.objects.filter(teacher=teacher).count()
         total_revenue = \
-        api_models.CartOrderItem.objects.filter(teacher=teacher, order__payment_status="Paid").aggregate(
-            total_revenue=models.Sum("price"))['total_revenue'] or 0
+            api_models.CartOrderItem.objects.filter(teacher=teacher, order__payment_status="Paid").aggregate(
+                total_revenue=models.Sum("price"))['total_revenue'] or 0
         monthly_revenue = api_models.CartOrderItem.objects.filter(teacher=teacher, order__payment_status="Paid",
                                                                   date__gte=one_month_ago).aggregate(
             total_revenue=models.Sum("price"))['total_revenue'] or 0
@@ -940,7 +977,7 @@ class TeacherNotificationDetailAPIView(generics.RetrieveUpdateAPIView):
 
 
 class CourseCreateAPIView(generics.CreateAPIView):
-    querysect = api_models.Course.objects.all()
+    queryset = api_models.Course.objects.all()
     serializer_class = api_serializer.CourseSerializer
     permission_classes = (permissions.AllowAny,)
 
@@ -960,7 +997,8 @@ class CourseCreateAPIView(generics.CreateAPIView):
                 variant_data = []
 
                 for item_key, item_value in self.request.data.items():
-                    if f'variants[{index}][items]' in item_key:
+
+                    if f"variants[{index}][items]" in item_key:
                         field_name = item_key.split('[')[-1].split(']')[0]
                         if field_name == "title":
                             if current_item:
